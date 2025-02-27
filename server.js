@@ -3,8 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const app = express();
-const port = process.env.PORT || 3000;
-
+const port = process.env.PORT || 3000;  // Updated for Render deployment
 
 // Middleware
 app.use(cors());
@@ -379,6 +378,24 @@ function getZoneFromCoordinates(lat, lng) {
   return "ashram_road";
 }
 
+// Helper function to compute a color based on the safety score
+function getSafetyColor(score) {
+  if (score >= 90) return "green";
+  else if (score >= 80) return "yellow";
+  else return "red";
+}
+
+// Helper function to assign icons for each safety metric
+function getSafetyIcons(safety, lighting, visibility) {
+  let safetyIcon = safety === "Safe" ? "check-circle" : "exclamation-triangle";
+  let lightingIcon;
+  if (lighting.toLowerCase() === "daylight") lightingIcon = "sun";
+  else if (lighting.toLowerCase() === "well lit") lightingIcon = "lightbulb";
+  else lightingIcon = "moon"; // for "Poorly lit" or similar
+  let visibilityIcon = visibility === "Good" ? "eye" : "eye-slash";
+  return { safetyIcon, lightingIcon, visibilityIcon };
+}
+
 // GET all locations
 app.get('/api/locations', (req, res) => {
   res.json({
@@ -417,6 +434,10 @@ app.get('/api/locations/type/:type', (req, res) => {
 });
 
 // GET safety data for a route between two points
+// Safety Features Added:
+// 1. Safety Assessment Modal details (safety score, status, lighting, visibility, recent crimes)
+// 2. Visual Indicators: color-coded safety score and icons for each safety metric
+// 3. In production, integrate with real safety/crime APIs; currently using mocked data.
 app.get('/api/safety', (req, res) => {
   const { startLat, startLng, endLat, endLng, time } = req.query;
   
@@ -427,18 +448,21 @@ app.get('/api/safety', (req, res) => {
     });
   }
   
-  // Determine which zone the route is primarily in
-  // For simplicity, we'll use the midpoint of the route
+  // Determine which zone the route is primarily in using the midpoint of the route
   const midLat = (parseFloat(startLat) + parseFloat(endLat)) / 2;
   const midLng = (parseFloat(startLng) + parseFloat(endLng)) / 2;
   const zone = getZoneFromCoordinates(midLat, midLng);
   
-  // Determine if it's day or night
+  // Determine if it's day or night based on the provided time or current time
   const currentTime = time ? parseInt(time) : new Date().getHours();
   const timeOfDay = (currentTime >= 6 && currentTime < 19) ? 'day' : 'night';
   
   // Get safety data for the zone and time of day
   const safetyData = safetyZones[zone][timeOfDay];
+  
+  // Compute additional visual indicators
+  const computedSafetyColor = getSafetyColor(safetyData.safetyScore);
+  const icons = getSafetyIcons(safetyData.safety, safetyData.lighting, safetyData.visibility);
   
   res.json({
     success: true,
@@ -453,7 +477,15 @@ app.get('/api/safety', (req, res) => {
         estimatedTime: `${Math.floor(((Math.abs(parseFloat(startLat) - parseFloat(endLat)) + 
                         Math.abs(parseFloat(startLng) - parseFloat(endLng))) * 111) / 0.05)} minutes`
       },
-      ...safetyData
+      // Safety Assessment Modal Data
+      safetyScore: safetyData.safetyScore,
+      safety: safetyData.safety,
+      lighting: safetyData.lighting,
+      visibility: safetyData.visibility,
+      recentCrimes: safetyData.recentCrimes,
+      // Visual Indicators
+      safetyColor: computedSafetyColor,
+      icons: icons
     }
   });
 });
